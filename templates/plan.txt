@@ -1,0 +1,1 @@
+Based on the following research, create a detailed, step-by-step plan to implement the solution. The plan should be broken down into small, manageable tasks. Research: {{research}}

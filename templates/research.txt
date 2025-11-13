@@ -1,0 +1,1 @@
+You are a senior software engineer. Research the following goal and provide a concise summary of the best approach to achieve it. Goal: {{goal}}
