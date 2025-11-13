@@ -22,28 +22,28 @@ function getPrompt(name) {
     return fs.readFileSync(promptPath, 'utf8');
 }
 
-function getLatestFile(directory, prefix) {
+function getLatestFile(directory) {
     const files = fs.readdirSync(directory);
-    const filteredFiles = files.filter(file => file.startsWith(prefix));
+    const filteredFiles = files.filter(file => file.endsWith('_research.md'));
     if (filteredFiles.length === 0) {
         return null;
     }
-    // Sort by date (assuming YYYY-MM-DD_ prefix)
+    // Sort by date (assuming ISO 8601 timestamp prefix)
     filteredFiles.sort((a, b) => {
-        const dateA = a.split('_')[0];
-        const dateB = b.split('_')[0];
-        return dateB.localeCompare(dateA);
+        const dateA = new Date(a.split('_')[0]);
+        const dateB = new Date(b.split('_')[0]);
+        return dateB - dateA;
     });
     return path.join(directory, filteredFiles[0]);
 }
 
-function getNextPlanVersion(planDir) {
+function getNextPlanVersion(planDir, planName) {
     fs.ensureDirSync(planDir);
     const files = fs.readdirSync(planDir);
-    const planFiles = files.filter(file => file.startsWith('plan-v') && file.endsWith('.md'));
+    const planFiles = files.filter(file => file.startsWith(planName) && file.endsWith('.md'));
     let maxVersion = 0;
     for (const file of planFiles) {
-        const match = file.match(/plan-v(\d+)\.md/);
+        const match = file.match(new RegExp(`${planName}-v(\\d+)\\.md`));
         if (match) {
             const version = parseInt(match[1], 10);
             if (!isNaN(version) && version > maxVersion) {
@@ -51,7 +51,14 @@ function getNextPlanVersion(planDir) {
             }
         }
     }
-    return `plan-v${maxVersion + 1}.md`;
+    return `${planName}-v${maxVersion + 1}.md`;
+}
+
+function sanitizeForFilename(text) {
+    return text
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '');
 }
 
 // Commands
@@ -71,8 +78,8 @@ program
             fs.ensureDirSync(researchDir);
 
             const prompt = getPrompt('research').replace('{{goal}}', goal);
-            const date = new Date().toISOString().split('T')[0];
-            const outputFile = path.join(researchDir, `${date}_research.md`);
+            const timestamp = new Date().toISOString();
+            const outputFile = path.join(researchDir, `${timestamp}_research.md`);
 
             console.log(chalk.blue(`\nResearching goal: "${goal}"...`));
             console.log(chalk.blue(`Saving research to: ${outputFile}`));
@@ -142,16 +149,19 @@ program
             } else {
                 // New Plan Branch
                 const researchDir = path.join(thoughtsDir, 'research');
-                const latestResearchFile = getLatestFile(researchDir, new Date().toISOString().split('T')[0]);
+                const latestResearchFile = getLatestFile(researchDir);
 
                 if (!latestResearchFile) {
                     console.error(chalk.red('Error: No research file found. Please run "gpfw research <goal>" first.'));
                     process.exit(1);
                 }
 
+                const namePlanPrompt = getPrompt('name-plan').replace('{{description}}', arg);
+                const planName = sanitizeForFilename(execSync(`gemini "${namePlanPrompt}"`).toString().trim());
+
                 const researchContent = fs.readFileSync(latestResearchFile, 'utf8');
                 const planPrompt = getPrompt('plan').replace('{{research}}', researchContent);
-                const nextPlanFileName = getNextPlanVersion(planDir);
+                const nextPlanFileName = getNextPlanVersion(planDir, planName);
                 const outputFile = path.join(planDir, nextPlanFileName);
 
                 console.log(chalk.blue(`\nGenerating new plan based on latest research from ${latestResearchFile}...`));

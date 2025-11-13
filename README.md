@@ -11,6 +11,8 @@
 
 ## Installation
 
+Before installing `gpfw`, ensure you have the Gemini CLI installed and set up. You can find instructions and the repository at [https://github.com/google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli).
+
 To install `gpfw` globally, run:
 
 ```bash
@@ -87,3 +89,7 @@ The prompts used by `gpfw` are located in the `templates/` directory. You can mo
 ## License
 
 ISC
+
+## Inspiration
+
+This project was inspired by the article "[Claude Code](https://www.ashleyha.com/posts/claude-code)" by Ashley H.
