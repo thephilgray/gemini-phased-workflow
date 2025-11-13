@@ -70,7 +70,6 @@ program
 program
     .command('research <goal>')
     .description('Conducts research on a given goal using Gemini and saves the output.')
-    .argument('<goal>', 'The research goal to provide to Gemini.')
     .action(async (goal) => {
         try {
             const thoughtsDir = getThoughtsDir();
