@@ -5,7 +5,8 @@
 ## Features
 
 *   **Research**: Conduct research on a given goal using Gemini and save the output.
-*   **Plan**: Generate a detailed plan based on the latest research, with options for interactive refinement.
+*   **Plan**: Generate a detailed plan based on the latest research.
+*   **Refine**: Refine an existing plan, with options for interactive or automated refinement.
 *   **Implement**: Generate code based on a plan and a specific phase request.
 *   **Validate**: Review generated code against a plan and provide a validation report.
 
@@ -47,15 +48,21 @@ You can also specify which research files to use with the `--research` (or `-r`)
 gpfw plan "A high-level description of the plan" -r thoughts/research/file1.md thoughts/research/file2.md
 ```
 
-**Refining a Plan:**
+### 3. Refine
 
-You can also refine an existing plan interactively. This will launch an interactive Gemini session. You will need to manually save the refined plan after the session.
+Refine an existing plan. By default, the refined plan will be saved automatically.
 
 ```bash
-gpfw plan thoughts/plans/plan-v1.md
+gpfw refine thoughts/plans/plan-v1.md
 ```
 
-### 3. Implement
+You can also refine a plan interactively. This will launch an interactive Gemini session. You will need to manually save the refined plan after the session.
+
+```bash
+gpfw refine --interactive thoughts/plans/plan-v1.md
+```
+
+### 4. Implement
 
 Generate code for a specific phase of your plan. The tool will modify files in the project directly.
 
@@ -65,7 +72,7 @@ gpfw implement <path-to-plan-file> "Description of the phase to implement"
 gpfw implement thoughts/plans/plan-v1.md "Implement the DarkModeToggle component"
 ```
 
-### 4. Validate
+### 5. Validate
 
 Review the generated code against your plan. The validation report will be printed to the console.
 

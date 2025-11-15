@@ -115,24 +115,97 @@ program
 
 program
     .command('plan')
-    .description('Generates a new plan based on the latest research or refines an existing plan.')
-    .argument('<arg>', 'A description of the plan to be generated, or a path to an existing plan file to be refined.')
+    .description('Generates a new plan based on the latest research.')
+    .argument('<description>', 'A description of the plan to be generated.')
     .option('-r, --research <files...>', 'Paths to research files to use.')
-    .action(async (arg, options) => {
+    .action(async (description, options) => {
         try {
             const thoughtsDir = getThoughtsDir();
             const planDir = path.join(thoughtsDir, 'plans');
             fs.ensureDirSync(planDir);
 
-            // Check if arg is a file path (for refinement) or a string (for new plan)
-            const isFilePath = fs.existsSync(arg) && fs.lstatSync(arg).isFile();
+            let researchContent = '';
+            if (options.research && options.research.length > 0) {
+                console.log(chalk.blue(`\nUsing research files: ${options.research.join(', ')}`));
+                for (const file of options.research) {
+                    if (fs.existsSync(file)) {
+                        researchContent += fs.readFileSync(file, 'utf8') + '\n\n';
+                    } else {
+                        console.error(chalk.red(`Error: Research file not found at ${file}`));
+                        process.exit(1);
+                    }
+                }
+            } else {
+                const researchDir = path.join(thoughtsDir, 'research');
+                const latestResearchFile = getLatestFile(researchDir);
 
-            if (isFilePath) {
-                // Refine Plan Branch
-                const planContent = fs.readFileSync(arg, 'utf8');
-                const refinePrompt = getPrompt('refine').replace('{{plan}}', planContent);
+                if (!latestResearchFile) {
+                    console.error(chalk.red('Error: No research file found. Please run "gpfw research <goal>" or provide research files with --research.'));
+                    process.exit(1);
+                }
+                console.log(chalk.blue(`\nGenerating new plan based on latest research from ${latestResearchFile}...`));
+                researchContent = fs.readFileSync(latestResearchFile, 'utf8');
+            }
 
-                console.log(chalk.blue(`\nStarting interactive refinement for plan: ${arg}`));
+            const namePlanPrompt = getPrompt('name-plan').replace('{{description}}', description);
+            const planName = sanitizeForFilename(execSync(`gemini "${namePlanPrompt}"`).toString().trim());
+
+            const planPrompt = getPrompt('plan').replace('{{research}}', researchContent);
+            const nextPlanFileName = getNextPlanVersion(planDir, planName);
+            const outputFile = path.join(planDir, nextPlanFileName);
+
+            console.log(chalk.blue(`Saving plan to: ${outputFile}`));
+
+            const geminiProcess = spawn('gemini', [planPrompt], { stdio: ['inherit', 'pipe', 'pipe'] });
+            let planOutput = '';
+            geminiProcess.stdout.on('data', (data) => {
+                planOutput += data.toString();
+            });
+            geminiProcess.stderr.on('data', (data) => {
+                console.error(chalk.red(data.toString()));
+            });
+
+            await new Promise((resolve, reject) => {
+            geminiProcess.on('close', (code) => {
+                if (code === 0) {
+                    resolve();
+                } else {
+                    reject(new Error(`Gemini process exited with code ${code}`));
+                }
+            });
+            });
+
+            fs.writeFileSync(outputFile, planOutput);
+        } catch (error) {
+            console.error(chalk.red(`Error during plan command: ${error.message}`));
+            if (error.stderr) {
+                console.error(chalk.red(error.stderr));
+            }
+            process.exit(1);
+        }
+    });
+
+program
+    .command('refine')
+    .description('Refines an existing plan.')
+    .argument('<planFile>', 'The path to the plan file to be refined.')
+    .option('-i, --interactive', 'Refine the plan interactively.')
+    .action(async (planFile, options) => {
+        try {
+            const thoughtsDir = getThoughtsDir();
+            const planDir = path.join(thoughtsDir, 'plans');
+            fs.ensureDirSync(planDir);
+
+            if (!fs.existsSync(planFile) || !fs.lstatSync(planFile).isFile()) {
+                console.error(chalk.red(`Error: Plan file not found at ${planFile}`));
+                process.exit(1);
+            }
+
+            const planContent = fs.readFileSync(planFile, 'utf8');
+            const refinePrompt = getPrompt('refine').replace('{{plan}}', planContent);
+
+            if (options.interactive) {
+                console.log(chalk.blue(`\nStarting interactive refinement for plan: ${planFile}`));
                 console.log(chalk.yellow('Please interact with Gemini to refine the plan. You will need to manually save the refined plan.'));
                 console.log(chalk.yellow('Press Ctrl+C to exit the interactive session when done.'));
 
@@ -140,49 +213,15 @@ program
 
                 geminiProcess.on('close', (code) => {
                     if (code === 0) {
-                        console.log(chalk.green(`
-Interactive refinement session closed.`));
-                        resolve();
+                        console.log(chalk.green(`\nInteractive refinement session closed.`));
                     } else {
                         console.error(chalk.red(`Interactive refinement session exited with code ${code}`));
                     }
                     process.exit(code);
                 });
             } else {
-                // New Plan Branch
-                let researchContent = '';
-                if (options.research && options.research.length > 0) {
-                    console.log(chalk.blue(`\nUsing research files: ${options.research.join(', ')}`));
-                    for (const file of options.research) {
-                        if (fs.existsSync(file)) {
-                            researchContent += fs.readFileSync(file, 'utf8') + '\n\n';
-                        } else {
-                            console.error(chalk.red(`Error: Research file not found at ${file}`));
-                            process.exit(1);
-                        }
-                    }
-                } else {
-                    const researchDir = path.join(thoughtsDir, 'research');
-                    const latestResearchFile = getLatestFile(researchDir);
-
-                    if (!latestResearchFile) {
-                        console.error(chalk.red('Error: No research file found. Please run "gpfw research <goal>" or provide research files with --research.'));
-                        process.exit(1);
-                    }
-                    console.log(chalk.blue(`\nGenerating new plan based on latest research from ${latestResearchFile}...`));
-                    researchContent = fs.readFileSync(latestResearchFile, 'utf8');
-                }
-
-                const namePlanPrompt = getPrompt('name-plan').replace('{{description}}', arg);
-                const planName = sanitizeForFilename(execSync(`gemini "${namePlanPrompt}"`).toString().trim());
-
-                const planPrompt = getPrompt('plan').replace('{{research}}', researchContent);
-                const nextPlanFileName = getNextPlanVersion(planDir, planName);
-                const outputFile = path.join(planDir, nextPlanFileName);
-
-                console.log(chalk.blue(`Saving plan to: ${outputFile}`));
-
-                const geminiProcess = spawn('gemini', [planPrompt], { stdio: ['inherit', 'pipe', 'pipe'] });
+                console.log(chalk.blue(`\nRefining plan: ${planFile}...`));
+                const geminiProcess = spawn('gemini', [refinePrompt], { stdio: ['inherit', 'pipe', 'pipe'] });
                 let planOutput = '';
                 geminiProcess.stdout.on('data', (data) => {
                     planOutput += data.toString();
@@ -192,19 +231,20 @@ Interactive refinement session closed.`));
                 });
 
                 await new Promise((resolve, reject) => {
-                geminiProcess.on('close', (code) => {
-                    if (code === 0) {
-                        resolve();
-                    } else {
-                        reject(new Error(`Gemini process exited with code ${code}`));
-                    }
-                });
+                    geminiProcess.on('close', (code) => {
+                        if (code === 0) {
+                            resolve();
+                        } else {
+                            reject(new Error(`Gemini process exited with code ${code}`));
+                        }
+                    });
                 });
 
-                fs.writeFileSync(outputFile, planOutput);
+                fs.writeFileSync(planFile, planOutput);
+                console.log(chalk.green(`Plan refined and saved to: ${planFile}`));
             }
         } catch (error) {
-            console.error(chalk.red(`Error during plan command: ${error.message}`));
+            console.error(chalk.red(`Error during refine command: ${error.message}`));
             if (error.stderr) {
                 console.error(chalk.red(error.stderr));
             }
