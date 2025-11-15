@@ -6,7 +6,7 @@
 
 *   **Research**: Conduct research on a given goal using Gemini and save the output.
 *   **Plan**: Generate a detailed plan based on the latest research, with options for interactive refinement.
-*   **Implement**: Generate code based on a plan, a specific phase request, and a target file.
+*   **Implement**: Generate code based on a plan and a specific phase request.
 *   **Validate**: Review generated code against a plan and provide a validation report.
 
 ## Installation
@@ -49,12 +49,12 @@ gpfw plan thoughts/plans/plan-v1.md
 
 ### 3. Implement
 
-Generate code for a specific phase of your plan and save it to a target file.
+Generate code for a specific phase of your plan. The tool will modify files in the project directly.
 
 ```bash
-gpfw implement <path-to-plan-file> "Description of the phase to implement" <path-to-target-file>
+gpfw implement <path-to-plan-file> "Description of the phase to implement"
 # Example:
-gpfw implement thoughts/plans/plan-v1.md "Implement the DarkModeToggle component" src/components/DarkModeToggle.js
+gpfw implement thoughts/plans/plan-v1.md "Implement the DarkModeToggle component"
 ```
 
 ### 4. Validate

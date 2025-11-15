@@ -1,1 +1,1 @@
-Based on the following plan, implement the requested phase. Plan: {{plan}}. Phase Request: {{phaseRequest}}. Target File: {{targetFile}}
+Based on the following plan, implement the requested phase. Plan: {{plan}}. Phase Request: {{phaseRequest}}. The user is working in a project, and you are free to modify any files as needed to implement the plan.
