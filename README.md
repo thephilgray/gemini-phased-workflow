@@ -35,8 +35,16 @@ gpfw research "Your project goal, e.g., How to implement a dark mode toggle in a
 
 Generate a detailed plan based on your latest research. This will create a `plan-vX.md` file in `thoughts/plans/`.
 
+By default, `gpfw plan` will use the latest research file from `thoughts/research/`.
+
 ```bash
 gpfw plan "A high-level description of the plan, e.g., Create a dark mode toggle"
+```
+
+You can also specify which research files to use with the `--research` (or `-r`) flag.
+
+```bash
+gpfw plan "A high-level description of the plan" -r thoughts/research/file1.md thoughts/research/file2.md
 ```
 
 **Refining a Plan:**
