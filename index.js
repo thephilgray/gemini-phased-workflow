@@ -68,8 +68,9 @@ program
     .version('0.1.0');
 
 program
-    .command('research <goal>')
+    .command('research')
     .description('Conducts research on a given goal using Gemini and saves the output.')
+    .argument('<goal>', 'The goal for the research.')
     .action(async (goal) => {
         try {
             const thoughtsDir = getThoughtsDir();
@@ -103,7 +104,6 @@ program
             });
 
             fs.writeFileSync(outputFile, researchOutput);
-            console.log(chalk.green(`Research complete and saved to ${outputFile}`));
         } catch (error) {
             console.error(chalk.red(`Error during research command: ${error.message}`));
             if (error.stderr) {
@@ -114,10 +114,11 @@ program
     });
 
 program
-    .command('plan <arg>')
+    .command('plan')
     .description('Generates a new plan based on the latest research or refines an existing plan.')
-    .argument('<arg>', 'Either a string for a new plan (e.g., "Create a dark mode toggle") or a path to an existing plan file for refinement (e.g., "thoughts/plans/plan-v1.md").')
-    .action(async (arg) => {
+    .argument('<arg>', 'A description of the plan to be generated, or a path to an existing plan file to be refined.')
+    .option('-r, --research <files...>', 'Paths to research files to use.')
+    .action(async (arg, options) => {
         try {
             const thoughtsDir = getThoughtsDir();
             const planDir = path.join(thoughtsDir, 'plans');
@@ -139,7 +140,9 @@ program
 
                 geminiProcess.on('close', (code) => {
                     if (code === 0) {
-                        console.log(chalk.green('Interactive refinement session closed.'));
+                        console.log(chalk.green(`
+Interactive refinement session closed.`));
+                        resolve();
                     } else {
                         console.error(chalk.red(`Interactive refinement session exited with code ${code}`));
                     }
@@ -147,23 +150,36 @@ program
                 });
             } else {
                 // New Plan Branch
-                const researchDir = path.join(thoughtsDir, 'research');
-                const latestResearchFile = getLatestFile(researchDir);
+                let researchContent = '';
+                if (options.research && options.research.length > 0) {
+                    console.log(chalk.blue(`\nUsing research files: ${options.research.join(', ')}`));
+                    for (const file of options.research) {
+                        if (fs.existsSync(file)) {
+                            researchContent += fs.readFileSync(file, 'utf8') + '\n\n';
+                        } else {
+                            console.error(chalk.red(`Error: Research file not found at ${file}`));
+                            process.exit(1);
+                        }
+                    }
+                } else {
+                    const researchDir = path.join(thoughtsDir, 'research');
+                    const latestResearchFile = getLatestFile(researchDir);
 
-                if (!latestResearchFile) {
-                    console.error(chalk.red('Error: No research file found. Please run "gpfw research <goal>" first.'));
-                    process.exit(1);
+                    if (!latestResearchFile) {
+                        console.error(chalk.red('Error: No research file found. Please run "gpfw research <goal>" or provide research files with --research.'));
+                        process.exit(1);
+                    }
+                    console.log(chalk.blue(`\nGenerating new plan based on latest research from ${latestResearchFile}...`));
+                    researchContent = fs.readFileSync(latestResearchFile, 'utf8');
                 }
 
                 const namePlanPrompt = getPrompt('name-plan').replace('{{description}}', arg);
                 const planName = sanitizeForFilename(execSync(`gemini "${namePlanPrompt}"`).toString().trim());
 
-                const researchContent = fs.readFileSync(latestResearchFile, 'utf8');
                 const planPrompt = getPrompt('plan').replace('{{research}}', researchContent);
                 const nextPlanFileName = getNextPlanVersion(planDir, planName);
                 const outputFile = path.join(planDir, nextPlanFileName);
 
-                console.log(chalk.blue(`\nGenerating new plan based on latest research from ${latestResearchFile}...`));
                 console.log(chalk.blue(`Saving plan to: ${outputFile}`));
 
                 const geminiProcess = spawn('gemini', [planPrompt], { stdio: ['inherit', 'pipe', 'pipe'] });
@@ -176,17 +192,16 @@ program
                 });
 
                 await new Promise((resolve, reject) => {
-                    geminiProcess.on('close', (code) => {
-                        if (code === 0) {
-                            resolve();
-                        } else {
-                            reject(new Error(`Gemini process exited with code ${code}`));
-                        }
-                    });
+                geminiProcess.on('close', (code) => {
+                    if (code === 0) {
+                        resolve();
+                    } else {
+                        reject(new Error(`Gemini process exited with code ${code}`));
+                    }
+                });
                 });
 
                 fs.writeFileSync(outputFile, planOutput);
-                console.log(chalk.green(`Plan generated and saved to ${outputFile}`));
             }
         } catch (error) {
             console.error(chalk.red(`Error during plan command: ${error.message}`));
@@ -198,12 +213,11 @@ program
     });
 
 program
-    .command('implement <planFile> <phaseRequest> <targetFile>')
-    .description('Generates code based on a plan file, a phase request, and a target file.')
+    .command('implement')
+    .description('Generates code based on a plan file and a phase request.')
     .argument('<planFile>', 'The path to the plan file (e.g., "thoughts/plans/plan-v1.md").')
     .argument('<phaseRequest>', 'A description of the specific phase or component to implement.')
-    .argument('<targetFile>', 'The absolute or relative path to the file where the generated code should be saved (e.g., "src/components/MyComponent.js").')
-    .action(async (planFile, phaseRequest, targetFile) => {
+    .action(async (planFile, phaseRequest) => {
         try {
             if (!fs.existsSync(planFile)) {
                 console.error(chalk.red(`Error: Plan file not found at ${planFile}`));
@@ -213,23 +227,11 @@ program
             const planContent = fs.readFileSync(planFile, 'utf8');
             const implementPrompt = getPrompt('implement')
                 .replace('{{plan}}', planContent)
-                .replace('{{phaseRequest}}', phaseRequest)
-                .replace('{{targetFile}}', targetFile);
-
-            const absoluteTargetFile = path.resolve(targetFile);
-            fs.ensureDirSync(path.dirname(absoluteTargetFile));
+                .replace('{{phaseRequest}}', phaseRequest);
 
             console.log(chalk.blue(`\nImplementing phase "${phaseRequest}" based on plan ${planFile}...`));
-            console.log(chalk.blue(`Saving code to: ${absoluteTargetFile}`));
 
-            const geminiProcess = spawn('gemini', [implementPrompt], { stdio: ['inherit', 'pipe', 'pipe'] });
-            let implementOutput = '';
-            geminiProcess.stdout.on('data', (data) => {
-                implementOutput += data.toString();
-            });
-            geminiProcess.stderr.on('data', (data) => {
-                console.error(chalk.red(data.toString()));
-            });
+            const geminiProcess = spawn('gemini', [implementPrompt], { stdio: 'inherit' });
 
             await new Promise((resolve, reject) => {
                 geminiProcess.on('close', (code) => {
@@ -240,9 +242,6 @@ program
                     }
                 });
             });
-
-            fs.writeFileSync(absoluteTargetFile, implementOutput);
-            console.log(chalk.green(`Implementation complete and saved to ${absoluteTargetFile}`));
         } catch (error) {
             console.error(chalk.red(`Error during implement command: ${error.message}`));
             if (error.stderr) {
@@ -253,7 +252,7 @@ program
     });
 
 program
-    .command('validate <planFile> <codeDir>')
+    .command('validate')
     .description('Reviews code in a specified directory against a plan file and prints the validation report.')
     .argument('<planFile>', 'The path to the plan file (e.g., "thoughts/plans/plan-v1.md").')
     .argument('<codeDir>', 'The path to the directory containing the code to be validated (e.g., "src/components/").')
@@ -283,7 +282,6 @@ program
             await new Promise((resolve, reject) => {
                 geminiProcess.on('close', (code) => {
                     if (code === 0) {
-                        console.log(chalk.green('Validation complete.'));
                         resolve();
                     } else {
                         reject(new Error(`Gemini process exited with code ${code}`));
