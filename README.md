@@ -82,6 +82,10 @@ gpfw validate <path-to-plan-file> <path-to-code-directory>
 gpfw validate thoughts/plans/plan-v1.md src/components/
 ```
 
+## Model Configuration
+
+The `gpfw` tool automatically retries with the `gemini-pro-flash` model if the `gemini-pro` model is exhausted or encounters rate limits. This ensures a smoother workflow and continued operation even under heavy usage.
+
 ## Development
 
 ### Local Installation for Development

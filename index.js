@@ -82,14 +82,10 @@ async function spawnGeminiWithFallback(args, options) {
 
         if (options.stdio === 'inherit') {
             // If stdio is inherit, we can't capture output directly, so we just wait
-            await new Promise((resolve, reject) => {
+            await new Promise((resolve) => {
                 geminiProcess.on('close', (exitCode) => {
                     code = exitCode;
-                    if (exitCode === 0) {
-                        resolve();
-                    } else {
-                        reject(new Error(`Gemini process exited with code ${exitCode}`));
-                    }
+                    resolve();
                 });
             });
         } else {
@@ -98,17 +94,12 @@ async function spawnGeminiWithFallback(args, options) {
             });
             geminiProcess.stderr.on('data', (data) => {
                 stderr += data.toString();
-                console.error(chalk.red(data.toString())); // Also log stderr in real-time
             });
 
-            await new Promise((resolve, reject) => {
+            await new Promise((resolve) => {
                 geminiProcess.on('close', (exitCode) => {
                     code = exitCode;
-                    if (exitCode === 0) {
-                        resolve();
-                    } else {
-                        reject(new Error(`Gemini process exited with code ${exitCode}`));
-                    }
+                    resolve();
                 });
             });
         }
@@ -127,22 +118,27 @@ async function spawnGeminiWithFallback(args, options) {
         console.warn(chalk.yellow("Detected token-related error. Retrying with gemini-2.5-flash..."));
 
         const flashArgs = [];
-        let modelOverridden = false;
-        for (const arg of args) {
+        let skipNext = false; // Flag to skip the model name after --model
+        let modelFound = false; // Flag to indicate if --model was in original args
+
+        for (let i = 0; i < args.length; i++) {
+            const arg = args[i];
+            if (skipNext) {
+                skipNext = false; // Reset for the next iteration
+                continue; // Skip the original model name
+            }
+
             if (arg === "--model") {
-                modelOverridden = true;
-                // Skip the next argument (the original model name)
-            } else if (modelOverridden) {
-                // Replace the model name with gemini-2.5-flash
                 flashArgs.push("--model", FALLBACK_MODEL);
-                modelOverridden = false;
+                modelFound = true;
+                skipNext = true; // Set flag to skip the next argument (original model name)
             } else {
                 flashArgs.push(arg);
             }
         }
 
         // If --model was not in original args, add it
-        if (!args.includes("--model")) {
+        if (!modelFound) {
             flashArgs.push("--model", FALLBACK_MODEL);
         }
 
