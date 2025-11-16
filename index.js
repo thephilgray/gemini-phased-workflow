@@ -61,6 +61,97 @@ function sanitizeForFilename(text) {
         .replace(/[^a-z0-9-]/g, '');
 }
 
+/**
+ * Spawns the gemini CLI command with fallback to gemini-2.5-flash on token errors.
+ * @param {string[]} args - Arguments to pass to the gemini command.
+ * @param {object} options - Options for child_process.spawn.
+ * @returns {Promise<{stdout: string, stderr: string, code: number}>} - The output and exit code of the gemini process.
+ */
+async function spawnGeminiWithFallback(args, options) {
+    const GEMINI_COMMAND = 'gemini';
+    const FALLBACK_MODEL = 'gemini-2.5-flash';
+
+    const runCommand = async (currentArgs) => {
+        let stdout = '';
+        let stderr = '';
+        let code = 0;
+
+        console.log(chalk.blue(`\nAttempting to run: ${GEMINI_COMMAND} ${currentArgs.join(' ')}`));
+
+        const geminiProcess = spawn(GEMINI_COMMAND, currentArgs, options);
+
+        if (options.stdio === 'inherit') {
+            // If stdio is inherit, we can't capture output directly, so we just wait
+            await new Promise((resolve, reject) => {
+                geminiProcess.on('close', (exitCode) => {
+                    code = exitCode;
+                    if (exitCode === 0) {
+                        resolve();
+                    } else {
+                        reject(new Error(`Gemini process exited with code ${exitCode}`));
+                    }
+                });
+            });
+        } else {
+            geminiProcess.stdout.on('data', (data) => {
+                stdout += data.toString();
+            });
+            geminiProcess.stderr.on('data', (data) => {
+                stderr += data.toString();
+                console.error(chalk.red(data.toString())); // Also log stderr in real-time
+            });
+
+            await new Promise((resolve, reject) => {
+                geminiProcess.on('close', (exitCode) => {
+                    code = exitCode;
+                    if (exitCode === 0) {
+                        resolve();
+                    } else {
+                        reject(new Error(`Gemini process exited with code ${exitCode}`));
+                    }
+                });
+            });
+        }
+        return { stdout, stderr, code };
+    };
+
+    let result = await runCommand(args);
+
+    // Check for token-related errors if not using 'inherit' stdio
+    if (result.code !== 0 && options.stdio !== 'inherit' &&
+        (result.stderr.includes("RESOURCE_EXHAUSTED") ||
+         result.stderr.includes("quota") ||
+         result.stderr.includes("rate limit") ||
+         result.stderr.includes("out of tokens"))) {
+
+        console.warn(chalk.yellow("Detected token-related error. Retrying with gemini-2.5-flash..."));
+
+        const flashArgs = [];
+        let modelOverridden = false;
+        for (const arg of args) {
+            if (arg === "--model") {
+                modelOverridden = true;
+                // Skip the next argument (the original model name)
+            } else if (modelOverridden) {
+                // Replace the model name with gemini-2.5-flash
+                flashArgs.push("--model", FALLBACK_MODEL);
+                modelOverridden = false;
+            } else {
+                flashArgs.push(arg);
+            }
+        }
+
+        // If --model was not in original args, add it
+        if (!args.includes("--model")) {
+            flashArgs.push("--model", FALLBACK_MODEL);
+        }
+
+        result = await runCommand(flashArgs);
+    }
+
+    return result;
+}
+
 // Commands
 const packageJsonPath = path.join(__dirname, 'package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
@@ -87,24 +178,14 @@ program
             console.log(chalk.blue(`\nResearching goal: "${goal}"...`));
             console.log(chalk.blue(`Saving research to: ${outputFile}`));
 
-            const geminiProcess = spawn('gemini', [prompt], { stdio: ['inherit', 'pipe', 'pipe'] });
-            let researchOutput = '';
-            geminiProcess.stdout.on('data', (data) => {
-                researchOutput += data.toString();
-            });
-            geminiProcess.stderr.on('data', (data) => {
-                console.error(chalk.red(data.toString()));
-            });
+            const { stdout: researchOutput, stderr: researchStderr, code: researchCode } = await spawnGeminiWithFallback(
+                [prompt],
+                { stdio: ['inherit', 'pipe', 'pipe'] }
+            );
 
-            await new Promise((resolve, reject) => {
-                geminiProcess.on('close', (code) => {
-                    if (code === 0) {
-                        resolve();
-                    } else {
-                        reject(new Error(`Gemini process exited with code ${code}`));
-                    }
-                });
-            });
+            if (researchCode !== 0) {
+                throw new Error(`Gemini process exited with code ${researchCode}`);
+            }
 
             fs.writeFileSync(outputFile, researchOutput);
         } catch (error) {
@@ -151,7 +232,14 @@ program
             }
 
             const namePlanPrompt = getPrompt('name-plan').replace('{{description}}', description);
-            const planName = sanitizeForFilename(execSync(`gemini "${namePlanPrompt}"`).toString().trim());
+            const { stdout: namePlanOutput, code: namePlanCode } = await spawnGeminiWithFallback(
+                [namePlanPrompt],
+                { stdio: ['inherit', 'pipe', 'pipe'] }
+            );
+            if (namePlanCode !== 0) {
+                throw new Error(`Gemini process for plan naming exited with code ${namePlanCode}`);
+            }
+            const planName = sanitizeForFilename(namePlanOutput.trim());
 
             const planPrompt = getPrompt('plan').replace('{{research}}', researchContent);
             const nextPlanFileName = getNextPlanVersion(planDir, planName);
@@ -159,24 +247,14 @@ program
 
             console.log(chalk.blue(`Saving plan to: ${outputFile}`));
 
-            const geminiProcess = spawn('gemini', [planPrompt], { stdio: ['inherit', 'pipe', 'pipe'] });
-            let planOutput = '';
-            geminiProcess.stdout.on('data', (data) => {
-                planOutput += data.toString();
-            });
-            geminiProcess.stderr.on('data', (data) => {
-                console.error(chalk.red(data.toString()));
-            });
+            const { stdout: planOutput, stderr: planStderr, code: planCode } = await spawnGeminiWithFallback(
+                [planPrompt],
+                { stdio: ['inherit', 'pipe', 'pipe'] }
+            );
 
-            await new Promise((resolve, reject) => {
-            geminiProcess.on('close', (code) => {
-                if (code === 0) {
-                    resolve();
-                } else {
-                    reject(new Error(`Gemini process exited with code ${code}`));
-                }
-            });
-            });
+            if (planCode !== 0) {
+                throw new Error(`Gemini process for plan generation exited with code ${planCode}`);
+            }
 
             fs.writeFileSync(outputFile, planOutput);
         } catch (error) {
@@ -214,36 +292,27 @@ program
                 console.log(chalk.yellow('Please interact with Gemini to refine the plan. You will need to manually save the refined plan.'));
                 console.log(chalk.yellow('Press Ctrl+C to exit the interactive session when done.'));
 
-                const geminiProcess = spawn('gemini', ['-i', refinePrompt], { stdio: 'inherit' });
+                const { code: interactiveCode } = await spawnGeminiWithFallback(
+                    ['-i', refinePrompt],
+                    { stdio: 'inherit' }
+                );
 
-                geminiProcess.on('close', (code) => {
-                    if (code === 0) {
-                        console.log(chalk.green(`\nInteractive refinement session closed.`));
-                    } else {
-                        console.error(chalk.red(`Interactive refinement session exited with code ${code}`));
-                    }
-                    process.exit(code);
-                });
+                if (interactiveCode === 0) {
+                    console.log(chalk.green(`\nInteractive refinement session closed.`));
+                } else {
+                    console.error(chalk.red(`Interactive refinement session exited with code ${interactiveCode}`));
+                }
+                process.exit(interactiveCode);
             } else {
                 console.log(chalk.blue(`\nRefining plan: ${planFile}...`));
-                const geminiProcess = spawn('gemini', [refinePrompt], { stdio: ['inherit', 'pipe', 'pipe'] });
-                let planOutput = '';
-                geminiProcess.stdout.on('data', (data) => {
-                    planOutput += data.toString();
-                });
-                geminiProcess.stderr.on('data', (data) => {
-                    console.error(chalk.red(data.toString()));
-                });
+                const { stdout: planOutput, stderr: planStderr, code: planCode } = await spawnGeminiWithFallback(
+                    [refinePrompt],
+                    { stdio: ['inherit', 'pipe', 'pipe'] }
+                );
 
-                await new Promise((resolve, reject) => {
-                    geminiProcess.on('close', (code) => {
-                        if (code === 0) {
-                            resolve();
-                        } else {
-                            reject(new Error(`Gemini process exited with code ${code}`));
-                        }
-                    });
-                });
+                if (planCode !== 0) {
+                    throw new Error(`Gemini process for plan refinement exited with code ${planCode}`);
+                }
 
                 const planDir = path.dirname(planFile);
                 const planName = path.basename(planFile, '.md').replace(/-v\d+$/, '');
@@ -281,17 +350,14 @@ program
 
             console.log(chalk.blue(`\nImplementing phase "${phaseRequest}" based on plan ${planFile}...`));
 
-            const geminiProcess = spawn('gemini', [implementPrompt], { stdio: 'inherit' });
+            const { code: implementCode } = await spawnGeminiWithFallback(
+                [implementPrompt],
+                { stdio: 'inherit' }
+            );
 
-            await new Promise((resolve, reject) => {
-                geminiProcess.on('close', (code) => {
-                    if (code === 0) {
-                        resolve();
-                    } else {
-                        reject(new Error(`Gemini process exited with code ${code}`));
-                    }
-                });
-            });
+            if (implementCode !== 0) {
+                throw new Error(`Gemini process for implementation exited with code ${implementCode}`);
+            }
         } catch (error) {
             console.error(chalk.red(`Error during implement command: ${error.message}`));
             if (error.stderr) {
@@ -327,17 +393,14 @@ program
             console.log(chalk.blue(`\nValidating code in ${absoluteCodeDir} against plan ${planFile}...`));
 
             // The gemini CLI expects @<directory> to include directory content
-            const geminiProcess = spawn('gemini', [validatePrompt, `@${absoluteCodeDir}`], { stdio: 'inherit' });
+            const { code: validateCode } = await spawnGeminiWithFallback(
+                [validatePrompt, `@${absoluteCodeDir}`],
+                { stdio: 'inherit' }
+            );
 
-            await new Promise((resolve, reject) => {
-                geminiProcess.on('close', (code) => {
-                    if (code === 0) {
-                        resolve();
-                    } else {
-                        reject(new Error(`Gemini process exited with code ${code}`));
-                    }
-                });
-            });
+            if (validateCode !== 0) {
+                throw new Error(`Gemini process for validation exited with code ${validateCode}`);
+            }
         } catch (error) {
             console.error(chalk.red(`Error during validate command: ${error.message}`));
             if (error.stderr) {
