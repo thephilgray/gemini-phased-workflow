@@ -2,6 +2,10 @@
 
 `gpfw` is a globally-installable NPM command-line tool designed to standardize and streamline a 4-phase coding workflow (Research, Plan, Implement, Validate) using the Gemini CLI. It helps developers manage their thought process and code generation in a structured manner.
 
+## Inspiration
+
+This project was inspired by the article "[Claude Code](https://www.ashleyha.com/posts/claude-code)" by Ashley H. and the [humanlayer](https://github.com/humanlayer/humanlayer) project the article it references. The intention here was to achieve a similar workflow with Gemini.
+
 ## Features
 
 *   **Research**: Conduct research on a given goal using Gemini and save the output.
@@ -109,6 +113,3 @@ The prompts used by `gpfw` are located in the `templates/` directory. You can mo
 
 ISC
 
-## Inspiration
-
-This project was inspired by the article "[Claude Code](https://www.ashleyha.com/posts/claude-code)" by Ashley H.
