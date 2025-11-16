@@ -240,8 +240,13 @@ program
                     });
                 });
 
-                fs.writeFileSync(planFile, planOutput);
-                console.log(chalk.green(`Plan refined and saved to: ${planFile}`));
+                const planDir = path.dirname(planFile);
+                const planName = path.basename(planFile, '.md').replace(/-v\d+$/, '');
+                const nextPlanFileName = getNextPlanVersion(planDir, planName);
+                const outputFile = path.join(planDir, nextPlanFileName);
+
+                fs.writeFileSync(outputFile, planOutput);
+                console.log(chalk.green(`Plan refined and saved to: ${outputFile}`));
             }
         } catch (error) {
             console.error(chalk.red(`Error during refine command: ${error.message}`));
