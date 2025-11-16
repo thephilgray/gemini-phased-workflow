@@ -62,10 +62,13 @@ function sanitizeForFilename(text) {
 }
 
 // Commands
+const packageJsonPath = path.join(__dirname, 'package.json');
+const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+
 program
     .name('gpfw')
     .description('Gemini Phased Workflow CLI tool')
-    .version('0.1.0');
+    .version(packageJson.version);
 
 program
     .command('research')
