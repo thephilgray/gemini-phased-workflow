@@ -1,1 +1,3 @@
-Refine the following plan. The user will provide feedback in an interactive chat. Plan: {{plan}}
+Refine the following plan. Focus on improving its clarity, completeness, feasibility, and identifying any potential areas for optimization or alternative approaches. Ensure the plan is detailed enough to be implemented without further clarification.
+
+Plan: {{plan}}

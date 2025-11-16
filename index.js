@@ -202,7 +202,9 @@ program
             }
 
             const planContent = fs.readFileSync(planFile, 'utf8');
-            const refinePrompt = getPrompt('refine').replace('{{plan}}', planContent);
+            const refinePrompt = options.interactive
+                ? getPrompt('refine-interactive').replace('{{plan}}', planContent)
+                : getPrompt('refine').replace('{{plan}}', planContent);
 
             if (options.interactive) {
                 console.log(chalk.blue(`\nStarting interactive refinement for plan: ${planFile}`));
