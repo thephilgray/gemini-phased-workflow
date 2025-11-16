@@ -4,7 +4,7 @@
 
 ## Inspiration
 
-This project was inspired by the article "[Claude Code](https://www.ashleyha.com/posts/claude-code)" by Ashley H. and the [humanlayer](https://github.com/humanlayer/humanlayer) project the article it references. The intention here was to achieve a similar workflow with Gemini.
+This project was inspired by the article "[Claude Code](https://www.ashleyha.com/posts/claude-code)" by Ashley H. and the [humanlayer](https://github.com/humanlayer/humanlayer) project it references. The intention here was to achieve a similar workflow with Gemini.
 
 ## Features
 
